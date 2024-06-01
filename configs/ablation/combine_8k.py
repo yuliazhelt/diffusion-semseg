@@ -7,8 +7,9 @@ model = dict(
     type='CustomVPD',
     sd_path='/home/yudzheltovskaya/custom_VPD/checkpoints/v1-5-pruned-emaonly.ckpt',
     class_embedding_path='/home/yudzheltovskaya/custom_VPD/checkpoints/class_embeddings.pth',
-    caption_type='clip_captions',
-    clip_captions_path='/home/yudzheltovskaya/custom_VPD/checkpoints/clip_captions.json',
+    caption_type='combine',
+    blip_caption_path='/home/yudzheltovskaya/custom_VPD/checkpoints/ade20k_captions_min=40_max=77.json',
+    clip_probs_path='/home/yudzheltovskaya/custom_VPD/checkpoints/clip_probs.json',
     neck=dict(
         type='FPN',
         in_channels=[320, 790, 1430, 1280],

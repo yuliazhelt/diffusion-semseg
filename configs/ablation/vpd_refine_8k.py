@@ -9,8 +9,7 @@ model = dict(
     type='CustomVPD',
     sd_path='checkpoints/v1-5-pruned-emaonly.ckpt',
     class_embedding_path='/home/yudzheltovskaya/meta-prompts/segmentation/class_embeddings.pth',
-    caption_type='clip_probs',
-    clip_probs_path='/home/yudzheltovskaya/custom_VPD/checkpoints/clip_probs.json',
+    caption_type='unaligned',
     refine_step=3,
     num_prompt=in_c,
     decode_head=dict(
@@ -39,6 +38,26 @@ model = dict(
         ),
     test_cfg=dict(mode='slide', crop_size=(512, 512), stride=(341, 341))
 )
+
+# model = dict(
+#     type='CustomVPD',
+#     sd_path='/home/yudzheltovskaya/custom_VPD/checkpoints/v1-5-pruned-emaonly.ckpt',
+#     class_embedding_path='/home/yudzheltovskaya/custom_VPD/checkpoints/class_embeddings.pth',
+#     refine_step=3,
+#     caption_type='meta_prompts',
+#     neck=dict(
+#         type='FPN',
+#         in_channels=[320, 790, 1430, 1280],
+#         out_channels=256,
+#         num_outs=4),
+#     decode_head=dict(
+#         type='FPNHead',
+#         num_classes=150,
+#         loss_decode=dict(
+#             type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0
+#         )
+#     ),
+# )
 
 lr_config = dict(policy='poly', power=1, min_lr=0.0, by_epoch=False,
                 warmup='linear',

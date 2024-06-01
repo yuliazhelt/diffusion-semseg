@@ -9,13 +9,15 @@ model = dict(
     type='CustomVPD',
     sd_path='checkpoints/v1-5-pruned-emaonly.ckpt',
     class_embedding_path='/home/yudzheltovskaya/meta-prompts/segmentation/class_embeddings.pth',
-    caption_type='clip_probs',
-    clip_probs_path='/home/yudzheltovskaya/custom_VPD/checkpoints/clip_probs.json',
+    caption_type='blip',
+    blip_caption_path='/home/yudzheltovskaya/custom_VPD/checkpoints/ade20k_captions_min=40_max=77.json',
     refine_step=3,
     num_prompt=in_c,
+    ldm_dim=[320, 717, 1357, 1280], # 1357
     decode_head=dict(
         type='UPerHead',
-        in_channels=[in_c, in_c, in_c, in_c],
+        # in_channels=[in_c, in_c, in_c, in_c],
+        in_channels=[77, 77, 77, 77],
         in_index=[0, 1, 2, 3],
         pool_scales=(1, 2, 3, 6),
         channels=head_c,
@@ -29,7 +31,7 @@ model = dict(
         ),
     auxiliary_head=dict(
         type='FCNHead',
-        in_channels=in_c,
+        in_channels=77,
         in_index=2,
         channels=head_c,
         num_convs=1,
@@ -39,6 +41,7 @@ model = dict(
         ),
     test_cfg=dict(mode='slide', crop_size=(512, 512), stride=(341, 341))
 )
+
 
 lr_config = dict(policy='poly', power=1, min_lr=0.0, by_epoch=False,
                 warmup='linear',

@@ -66,7 +66,7 @@ class CustomVPD(BaseSegmentor):
         self.clip_probs_path = clip_probs_path
         self.clip_captions_path = clip_captions_path
 
-        assert self.caption_type in ['unaligned', 'blip', 'meta_prompts', 'clip_probs', 'clip_captions']
+        assert self.caption_type in ['unaligned', 'blip', 'meta_prompts', 'clip_probs', 'clip_captions', 'combine']
 
         print(f'Unet refine step: {self.refine_step}  Caption text usage: {self.caption_type}')
         
@@ -102,10 +102,11 @@ class CustomVPD(BaseSegmentor):
                     param.requires_grad = False
                 text_dim = 768
 
-            self.num_classes = decode_head['num_classes']
-            enc16_size, enc32_size = self.compute_decoder_head_shapes()
-            neck['in_channels'][1] = enc16_size
-            neck['in_channels'][2] = enc32_size
+            if self.refine_step == 0:
+                self.num_classes = decode_head['num_classes']
+                enc16_size, enc32_size = self.compute_decoder_head_shapes()
+                neck['in_channels'][1] = enc16_size
+                neck['in_channels'][2] = enc32_size
 
         elif self.caption_type == 'meta_prompts':
             self.num_prompt = num_prompt 
@@ -130,6 +131,27 @@ class CustomVPD(BaseSegmentor):
                 for param in sd_model.cond_stage_model.parameters():
                     param.requires_grad = False
                 text_dim = 768
+
+            if self.refine_step == 0:
+                self.num_classes = decode_head['num_classes']
+                enc16_size, enc32_size = self.compute_decoder_head_shapes()
+                neck['in_channels'][1] = enc16_size
+                neck['in_channels'][2] = enc32_size
+
+        elif self.caption_type == 'combine':
+            with open(self.clip_probs_path, 'r') as f:
+                print('Loaded clip probs!')
+                self.clip_probs = json.load(f)
+
+            class_embeddings = torch.load(class_embedding_path)
+            self.register_buffer('class_embeddings', class_embeddings)
+            text_dim = self.class_embeddings.shape[-1]
+
+            with open(self.blip_caption_path, 'r') as f:
+                print('Loaded blip captions!')
+                self.blip_captions = json.load(f)
+                for param in sd_model.cond_stage_model.parameters():
+                    param.requires_grad = False
 
             self.num_classes = decode_head['num_classes']
             enc16_size, enc32_size = self.compute_decoder_head_shapes()
@@ -180,14 +202,12 @@ class CustomVPD(BaseSegmentor):
             c_crossattn = self.text_adapter(latents, self.class_embeddings, self.gamma) # NOTE: here the c_crossattn should be expand_dim as latents
         
         elif self.caption_type == 'blip':
-            # texts = []
             _cs = []
             conds = []
             for img_meta in img_metas:
                 img_id = img_meta['ori_filename']
                 text = self.blip_captions[img_id]['captions']
                 c = self.sd_model.get_learned_conditioning(text)
-                # texts.append(text)
                 _cs.append(c)
             c = torch.cat(_cs, dim=0)
             conds.append(c)
@@ -211,11 +231,33 @@ class CustomVPD(BaseSegmentor):
             conds = []
             for img_meta in img_metas:
                 img_id = img_meta['ori_filename']
-                text = self.clip_captions[img_id]['captions']
+                text = self.clip_captions[img_id]['caption']
                 c = self.sd_model.get_learned_conditioning(text)
                 _cs.append(c)
             c = torch.cat(_cs, dim=0)
             conds.append(c)
+            
+            c_crossattn = torch.cat(conds, dim=1)
+
+        elif self.caption_type == 'combine':
+            _cs = []
+            conds = []
+            batch_embs = []
+            for img_meta in img_metas:
+                img_id = img_meta['ori_filename']
+                text = self.blip_captions[img_id]['captions']
+                c = self.sd_model.get_learned_conditioning(text)
+                _cs.append(c)
+                probs = torch.FloatTensor(self.clip_probs[img_id]['probs']).to(img.device)
+                weighted_class_embs = probs.repeat(self.class_embeddings.shape[-1], 1).T * self.class_embeddings
+                batch_embs.append(weighted_class_embs)
+
+            c = torch.cat(_cs, dim=0)
+            batch_embs = torch.stack(batch_embs)
+
+            conds.append(c)
+            conds.append(batch_embs)
+
             c_crossattn = torch.cat(conds, dim=1)
 
         return c_crossattn
@@ -232,9 +274,6 @@ class CustomVPD(BaseSegmentor):
             c_crossattn = self.get_crossattn(latents, img, img_metas)
             t = torch.ones((img.shape[0],), device=img.device).long()
             outs = self.unet(latents, t, c_crossattn=[c_crossattn])
-            print(c_crossattn.shape)
-            print(outs[1].shape)
-            print(latents.shape)
             return outs
 
         for i in range(self.refine_step):
@@ -283,9 +322,13 @@ class CustomVPD(BaseSegmentor):
         enc_16_channels = 640
         enc_32_channels = 1280
 
-        if self.caption_type == 'blip':
+        if self.caption_type == 'blip' or self.caption_type == 'clip_captions':
             enc_16_channels += 77
             enc_32_channels += 77
+
+        elif self.caption_type == 'combine':
+            enc_16_channels += 227
+            enc_32_channels += 227
 
         return enc_16_channels, enc_32_channels
 
